@@ -6,14 +6,14 @@ const regd_users = express.Router();
 let users = [];
 
 const isValid = (username) => { //returns boolean
-    return users.find((user) => user.username === username);
+    return users.some((user) => user.username === username);
+
 }
 
 const authenticatedUser = (username, password) => { //returns boolean
-    const user = users
-        .find((user) => user.username === username && user.password === password);
-
-    return !!user;
+    return users.some(
+        (user) => user.username === username && user.password === password
+    );
 }
 
 regd_users.post("/login", (req, res) => {
@@ -21,45 +21,44 @@ regd_users.post("/login", (req, res) => {
     const password = req.body.password;
 
     if (!username || !password) {
-        return res.status(404).json({ message: 'Not valid username or passowrd' })
-    }
-
-    if (authenticatedUser(username, password)) {
-        const accessToken = jwt.sign(
-            {
-                data: password,
-            },
-            'access',
-            {
-                expiresIn: 60 * 60,
-            }
-        );
-
+        return res.status(400).json({ message: "Missing username or password" });
+    } else if (!authenticatedUser(username, password)) {
+        return res.status(401).json({ message: "Incorrect username or password" });
+    } else {
+        const accessToken = jwt.sign({ data: password }, "access", {
+            expiresIn: 60 * 60,
+        });
         req.session.authorization = { accessToken, username };
-
-        return res.status(200).json({ message: 'Successfully signed in' });
+        return res.status(200).json({ message: "User successfully logged in." });
     }
-
-    return res.status(208).send("Invalid Login. check username and password");
 });
 
 // Add a book review
 regd_users.put("/auth/review/:isbn", (req, res) => {
+    const user = req.session.authorization.username;
+    const review = req.body.review; // string
     const isbn = req.params.isbn;
-    const review = req.body.review;
-    books[isbn].reviews[req.session.authorization["username"]] = review;
-    return res
-        .status(200)
-        .json({ message: "review succeed", reviews: books[isbn].reviews });
+    if (!review) {
+        res.status(400).json({ message: "Review is empty!" });
+    } else {
+        books[isbn].reviews[user] = review;
+        res.status(200).json({ message: "Book review updated." });
+    }
 });
 
 regd_users.delete("/auth/review/:isbn", (req, res) => {
+    const user = req.session.authorization.username;
     const isbn = req.params.isbn;
-
-    delete books[isbn].reviews[req.session.authorization["username"]];
-    return res
-        .status(200)
-        .json({ message: "review deleted", reviews: books[isbn].reviews });
+    if (!books[isbn]) {
+        res.status(400).json({ message: "invalid ISBN." });
+    } else if (!books[isbn].reviews[user]) {
+        res
+            .status(400)
+            .json({ message: `${user} hasn't submitted a review for this book.` });
+    } else {
+        delete books[isbn].reviews[user];
+        res.status(200).json({ message: "Book review deleted." });
+    }
 });
 
 module.exports.authenticated = regd_users;
